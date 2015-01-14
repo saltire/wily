@@ -39,7 +39,6 @@ from __future__ import unicode_literals
 from __future__ import print_function
 from __future__ import absolute_import
 
-import willie.db as db
 from willie.tools import iteritems
 import os
 import sys
@@ -49,7 +48,6 @@ except ImportError:
     import configparser as ConfigParser
 import getpass
 import imp
-import willie.bot
 if sys.version_info.major >= 3:
     unicode = str
     basestring = str
@@ -59,7 +57,7 @@ else:
 
 
 class ConfigurationError(Exception):
-    """ Exception type for configuration errors """
+    """Exception type for configuration errors"""
 
     def __init__(self, value):
         self.value = value
@@ -69,98 +67,77 @@ class ConfigurationError(Exception):
 
 
 class Config(object):
-    def __init__(self, filename, load=True, ignore_errors=False):
+    def __init__(self, path):
         """Return a configuration object.
 
-        The given filename will be associated with the configuration, and is
-        the file which will be written if write() is called. If load is not
+        The given path will be associated with the configuration, and is
+        the file which will be written if save() is called. If load is not
         given or True, the configuration object will load the attributes from
-        the file at filename.
+        the file at path.
 
         A few default values will be set here if they are not defined in the
         config file, or a config file is not loaded. They are documented below.
 
         """
-        self.filename = filename
-        """The config object's associated file, as noted above."""
+        self.path = path
+
         self.parser = ConfigParser.RawConfigParser(allow_no_value=True)
-        if load:
-            self.parser.read(self.filename)
-
-            if not ignore_errors:
-                #Sanity check for the configuration file:
-                if not self.parser.has_section('core'):
-                    raise ConfigurationError('Core section missing!')
-                if not self.parser.has_option('core', 'nick'):
-                    raise ConfigurationError(
-                        'Bot IRC nick not defined,'
-                        ' expected option `nick` in [core] section'
-                    )
-                if not self.parser.has_option('core', 'owner'):
-                    raise ConfigurationError(
-                        'Bot owner not defined,'
-                        ' expected option `owner` in [core] section'
-                    )
-                if not self.parser.has_option('core', 'host'):
-                    raise ConfigurationError(
-                        'IRC server address not defined,'
-                        ' expceted option `host` in [core] section'
-                    )
-
-            #Setting defaults:
-            if not self.parser.has_option('core', 'port'):
-                self.parser.set('core', 'port', '6667')
-            if not self.parser.has_option('core', 'user'):
-                self.parser.set('core', 'user', 'willie')
-            if not self.parser.has_option('core', 'name'):
-                self.parser.set('core', 'name',
-                                'Willie Embosbot, http://willie.dftba.net')
-            if not self.parser.has_option('core', 'prefix'):
-                self.parser.set('core', 'prefix', r'\.')
-            if not self.parser.has_option('core', 'admins'):
-                self.parser.set('core', 'admins', '')
-            if not self.parser.has_option('core', 'verify_ssl'):
-                self.parser.set('core', 'verify_ssl', 'True')
-            if not self.parser.has_option('core', 'timeout'):
-                self.parser.set('core', 'timeout', '120')
-        else:
-            self.parser.add_section('core')
         self.get = self.parser.get
+        self.has_option = self.parser.has_option
+        self.has_section = self.parser.has_section
+
+        if os.path.isfile(path):
+            self.parser.read(self.path)
+
+        # Set defaults
+        defaults = [('core', 'port', '6667'),
+                    ('core', 'user', 'wily'),
+                    ('core', 'name', 'WilyBot'),
+                    ('core', 'prefix', r'\.'),
+                    ('core', 'admins', ''),
+                    ('core', 'verify_ssl', 'True'),
+                    ('core', 'timeout', '120'),
+                    ]
+        self.add_section('core')
+        for section, option, defval in defaults:
+            if not self.has_option(section, option):
+                self.parser.set(section, option, defval)
+
+    def check(self):
+        # Generate file if it doesn't exist
+        if not os.path.isfile(self.path):
+            print("Couldn't find the configuration file. Let's generate it.\n")
+            self.configure_core()
+            if self.option("Would you like to see if there are any modules "
+                           "that need configuring"):
+                self.configure_modules()
+            self.save()
+            print("Configuration file written successfully!")
+
+        # Sanity check on critical options
+        if not self.has_section('core'):
+            raise ConfigurationError('Missing [core] section from configuration file.')
+        if not self.has_option('core', 'nick'):
+            raise ConfigurationError(
+                'Bot IRC nick not configured, expected option `nick` in [core] section.')
+        if not self.has_option('core', 'owner'):
+            raise ConfigurationError(
+                'Bot owner not configured, expected option `owner` in [core] section.')
+        if not self.has_option('core', 'host'):
+            raise ConfigurationError(
+                'IRC server address not configured, expected option `host` in [core] section.')
 
     def save(self):
         """Save all changes to the config file."""
-        cfgfile = open(self.filename, 'w')
-        self.parser.write(cfgfile)
-        cfgfile.flush()
-        cfgfile.close()
-
-    def add_section(self, name):
-        """Add a section to the config file.
-
-        Returns ``False`` if already exists.
-
-        """
-        try:
-            return self.parser.add_section(name)
-        except ConfigParser.DuplicateSectionError:
-            return False
-
-    def has_option(self, section, name):
-        """Check if option ``name`` exists under section ``section``."""
-        return self.parser.has_option(section, name)
-
-    def has_section(self, name):
-        """Check if section ``name`` exists."""
-        return self.parser.has_section(name)
+        with open(self.path, 'w') as cfgfile:
+            self.parser.write(cfgfile)
 
     class ConfigSection(object):
-
         """Represents a section of the config file.
 
-        Contains all keys in thesection as attributes.
+        Contains all keys in the section as attributes.
 
         """
-
         def __init__(self, name, items, parent):
             object.__setattr__(self, '_name', name)
             object.__setattr__(self, '_parent', parent)
@@ -203,8 +180,48 @@ class Config(object):
             raise AttributeError("%r object has no attribute %r"
                                  % (type(self).__name__, name))
 
-    def interactive_add(self, section, option, prompt, default=None,
-                        ispass=False):
+    def add_section(self, name):
+        """Add a section to the config file.
+
+        Returns ``False`` if already exists.
+
+        """
+        try:
+            return self.parser.add_section(name)
+        except ConfigParser.DuplicateSectionError:
+            return False
+
+    def add_option(self, section, option, question, default=False):
+        """Ask "y/n" and set `option` based in the response.
+
+        Show user in terminal a "y/n" prompt, and set `option` to True or False
+        based on the response. If default is passed as true, the default will
+        be shown as ``[y]``, else it will be ``[n]``. ``question`` should be
+        phrased as a question, but without a question mark at the end. If
+        ``option`` is already defined, it will be used instead of ``default``,
+        regardless of wheather ``default`` is passed.
+
+        """
+        self.add_section(section)
+        if self.parser.has_option(section, option):
+            default = self.parser.getboolean(section, option)
+        answer = self.option(question, default)
+        self.parser.set(section, option, str(answer))
+
+    def option(self, question, default=False):
+        """Ask "y/n" and return the corresponding boolean answer.
+
+        Show user in terminal a "y/n" prompt, and return true or false based on
+        the response. If default is passed as true, the default will be shown
+        as ``[y]``, else it will be ``[n]``. ``question`` should be phrased as
+        a question, but without a question mark at the end.
+
+        """
+        d = 'y' if default else 'n'
+        ans = get_input('% (y/n)? [%] ' % question, d) or d
+        return ans.lower() == 'y'
+
+    def interactive_add(self, section, option, prompt, default=None, ispass=False):
         """Ask for the value to assign to ``option`` under ``section``.
 
         Ask user in terminal for the value to assign to ``option`` under
@@ -214,8 +231,7 @@ class Config(object):
         ``default`` is passed.
 
         """
-        if not self.parser.has_section(section):
-            self.parser.add_section(section)
+        self.parser.add_section(section)
         if self.parser.has_option(section, option):
             atr = self.parser.get(section, option)
             if ispass:
@@ -264,66 +280,19 @@ class Config(object):
             mem = get_input(prompt + ' ')
         self.parser.set(section, option, ','.join(lst))
 
-    def add_option(self, section, option, question, default=False):
-        """Ask "y/n" and set `option` based in the response.
-
-        Show user in terminal a "y/n" prompt, and set `option` to True or False
-        based on the response. If default is passed as true, the default will
-        be shown as ``[y]``, else it will be ``[n]``. ``question`` should be
-        phrased as a question, but without a question mark at the end. If
-        ``option`` is already defined, it will be used instead of ``default``,
-        regardless of wheather ``default`` is passed.
-
-        """
-        if not self.parser.has_section(section):
-            self.parser.add_section(section)
-        if self.parser.has_option(section, option):
-            default = self.parser.getboolean(section, option)
-        answer = self.option(question, default)
-        self.parser.set(section, option, str(answer))
-
-    def option(self, question, default=False):
-        """Ask "y/n" and return the corresponding boolean answer.
-
-        Show user in terminal a "y/n" prompt, and return true or false based on
-        the response. If default is passed as true, the default will be shown
-        as ``[y]``, else it will be ``[n]``. ``question`` should be phrased as
-        a question, but without a question mark at the end.
-
-        """
-        d = 'n'
-        if default:
-            d = 'y'
-        ans = get_input(question + ' (y/n)? [' + d + '] ')
-        if not ans:
-            ans = d
-        return ans.lower() == 'y'
-
-    def _core(self):
-        self.interactive_add('core', 'nick', 'Enter the nickname for your bot',
-                             'Willie')
-        self.interactive_add('core', 'host', 'Enter the server to connect to',
-                             'irc.dftba.net')
+    def configure_core(self):
+        self.interactive_add('core', 'nick', 'Enter the nickname for your bot', 'Willie')
+        self.interactive_add('core', 'host', 'Enter the server to connect to', 'irc.dftba.net')
         self.add_option('core', 'use_ssl', 'Should the bot connect with SSL')
-        if self.use_ssl == 'True':
-            default_port = '6697'
-        else:
-            default_port = '6667'
         self.interactive_add('core', 'port', 'Enter the port to connect on',
-                             default_port)
-        self.interactive_add(
-            'core', 'owner',
-            "Enter your own IRC name (or that of the bot's owner)"
-        )
-        c = 'Enter the channels to connect to by default, one at a time.' + \
-            ' When done, hit enter again.'
-        self.add_list('core', 'channels', c, 'Channel:')
+                             '6697' if self.core.use_ssl else '6667')
+        self.interactive_add('core', 'owner',
+            "Enter your own IRC name (or that of the bot's owner)")
+        self.add_list('core', 'channels',
+                      'Enter the channels to connect to by default, one at a time. '
+                      'When done, hit enter again.', 'Channel:')
 
-    def _db(self):
-        db.configure(self)
-        self.save()
-
-    def _modules(self):
+    def configure_modules(self):
         home = os.getcwd()
         modules_dir = os.path.join(home, 'modules')
         filenames = self.enumerate_modules()
@@ -337,7 +306,11 @@ class Config(object):
             else:
                 if hasattr(module, 'configure'):
                     module.configure(self)
-        self.save()
+
+    def configure_all(self):
+        self.configure_core()
+        if self.option("Would you like to see if there are any modules that need configuring"):
+            self.configure_modules()
 
     def enumerate_modules(self, show_all=False):
         """Map the names of modules to the location of their file.
@@ -407,62 +380,39 @@ class Config(object):
         return modules
 
 
-def wizard(section, config=None):
-    dotdir = os.path.expanduser('~/.willie')
-    configpath = os.path.join(dotdir, (config or 'default') + '.cfg')
-    if section == 'all':
-        create_config(configpath)
-    elif section == 'db':
-        print(
-            'Willie will be moving to an automatically configured sqlite '
-            'database in version 5.0. In preparation, the database config '
-            'wizard has been disabled. Please note that MySQL and Postgres'
-            ' support will be dropped entirely in 5.0. See '
-            'http://willie.dftba.net/willie_5.html for more information.'
-        )
-    elif section == 'mod':
-        check_dir(False)
-        if not os.path.isfile(configpath):
-            print("No config file found." +
-                  " Please make one before configuring these options.")
-            sys.exit(1)
-        config = Config(configpath, True)
-        config._modules()
+def check_home_dir(homedir, create=True):
+    """Check to see if the home directory exists, and optionally try to create it if not."""
+    if os.path.isdir(homedir):
+        return homedir
+    if create:
+        try:
+            os.makedirs(homedir)
+            return homedir
+        except:
+            pass
 
 
-def check_dir(create=True):
-    dotdir = os.path.join(os.path.expanduser('~'), '.willie')
-    if not os.path.isdir(dotdir):
-        if create:
-            print('Creating a config directory at ~/.willie...')
-            try:
-                os.makedirs(dotdir)
-            except Exception as e:
-                print('There was a problem creating %s:' % dotdir, file=sys.stderr)
-                print('%s, %s' % (e.__class__, str(e)), file=sys.stderr)
-                print('Please fix this and then run Willie again.', file=sys.stderr)
-                sys.exit(1)
-        else:
-            print("No config file found. Please make one before configuring these options.")
-            sys.exit(1)
+def get_config(homedir, name='default', extension='.cfg'):
+    if os.path.isfile(name):
+        # we have the full config path
+        path = name
+
+    elif check_home_dir(homedir):
+        # construct path from name and extension
+        if not name.endswith(extension):
+            name += extension
+        path = os.path.join(homedir, name)
+
+    else:
+        # home dir doesn't exist and we can't create it
+        print("Couldn't find the config directory.")
+        return
+
+    return Config(path)
 
 
-def create_config(configpath):
-    check_dir()
-    print("Please answer the following questions" +
-          " to create your configuration file:\n")
-    try:
-        config = Config(configpath, os.path.isfile(configpath))
-        config._core()
-        if config.option(
-            'Would you like to see if there are any modules'
-            ' that need configuring'
-        ):
-            config._modules()
-        config.save()
-    except Exception as e:
-        print("Encountered an error while writing the config file." +
-              " This shouldn't happen. Check permissions.")
-        raise
-        sys.exit(1)
-    print("Config file written sucessfully!")
+def enumerate_configs(homedir, extension='.cfg'):
+    if not os.path.isdir(homedir):
+        return []
+
+    return [item for item in os.listdir(homedir) if item.endswith(extension)]

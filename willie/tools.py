@@ -428,15 +428,14 @@ class Identifier(unicode):
 
 
 class OutputRedirect:
-
-    """Redirect te output to the terminal and a log file.
+    """Redirect the output to the terminal and a log file.
 
     A simplified object used to write to both the terminal and a log file.
 
     """
 
     def __init__(self, logpath, stderr=False, quiet=False):
-        """Create an object which will to to a file and the terminal.
+        """Create an object which will write to a file and the terminal.
 
         Create an object which will log to the file at ``logpath`` as well as
         the terminal.
@@ -558,8 +557,7 @@ def get_timezone(db=None, config=None, zone=None, nick=None, channel=None):
     return tz
 
 
-def format_time(db=None, config=None, zone=None, nick=None, channel=None,
-                time=None):
+def format_time(db=None, config=None, zone=None, nick=None, channel=None, time=None):
     """Return a formatted string of the given time in the given zone.
 
     `time`, if given, should be a naive `datetime.datetime` object and will be
@@ -611,7 +609,6 @@ def get_hostmask_regex(mask):
 
 
 class WillieMemory(dict):
-
     """A simple thread-safe dict implementation.
 
     *Availability: 4.0; available as ``Willie.WillieMemory`` in 3.1.0 - 3.2.0*

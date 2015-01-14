@@ -118,8 +118,7 @@ class Bot(asynchat.async_chat):
         if not self.config.core.log_raw:
             return
         if not self.config.core.logdir:
-            self.config.core.logdir = os.path.join(self.config.dotdir,
-                                                   'logs')
+            self.config.core.logdir = os.path.join(self.config.core.homedir, 'logs')
         if not os.path.isdir(self.config.core.logdir):
             try:
                 os.mkdir(self.config.core.logdir)
@@ -128,8 +127,7 @@ class Bot(asynchat.async_chat):
                 stderr('%s %s' % (str(e.__class__), str(e)))
                 stderr('Please fix this and then run Willie again.')
                 os._exit(1)
-        f = codecs.open(os.path.join(self.config.core.logdir, 'raw.log'),
-                        'a', encoding='utf-8')
+        f = codecs.open(os.path.join(self.config.core.logdir, 'raw.log'), 'a', encoding='utf-8')
         f.write(prefix + unicode(time.time()) + "\t")
         temp = line.replace('\n', '')
 
@@ -140,7 +138,7 @@ class Bot(asynchat.async_chat):
     def safe(self, string):
         """Remove newlines from a string."""
         if sys.version_info.major >= 3 and isinstance(string, bytes):
-                string = string.decode('utf8')
+            string = string.decode('utf8')
         elif sys.version_info.major < 3:
             if not isinstance(string, unicode):
                 string = unicode(string, encoding='utf8')
@@ -170,8 +168,7 @@ class Bot(asynchat.async_chat):
         if text is not None:
             text = self.safe(text)
         try:
-            self.writing_lock.acquire()  # Blocking lock, can't send two things
-                                         # at a time
+            self.writing_lock.acquire()  # Blocking lock, can't send two things at a time
 
             # From RFC2812 Internet Relay Chat: Client Protocol
             # Section 2.3
